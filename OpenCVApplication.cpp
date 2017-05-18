@@ -153,7 +153,7 @@ double findDistance(Point position, Vec3d color, int cluster, Slic* slic){
 
 void displayClusters(Mat src, Slic* slic){
 	Mat dest = src.clone();
-	std::cout << slic->clusters.size() << std::endl;
+	//std::cout << slic->clusters.size() << std::endl;
 
 	for (int i = 0; i < slic->clusters.size(); i++){
 		circle(dest, Point(slic->clusters.at(i).at(3), slic->clusters.at(i).at(4)), 1, Scalar(0, 0, 255));
@@ -311,12 +311,26 @@ void on_trackbar_video(int, void*) {
 	int frameNum = -1;
 	int frameCount = 0;
 
+	
 
+	Mat resize(capS.height , capS.height , CV_8UC3);
+
+	std::cout << "width : " << capS.width << "height : " << capS.height<< std::endl;
+
+	int resizeFactor = capS.width - capS.height;
 
 	for (;;)
 	{
 		cap >> frame; // get a new frame from camera
-		generateSuperpixel(frame, k_slider + 1, m_slider + 1, &slic);
+
+		for (int i = 0; i < capS.height ; i++) {
+			for (int j = 0 ; j < capS.width ; j++) {
+				resize.at<Vec3b>(i, j) = frame.at<Vec3b>(i, j + resizeFactor);
+			}
+		}
+
+
+		generateSuperpixel(resize, k_slider + 1, m_slider + 1, &slic);
 
 		if (frame.empty())
 		{
@@ -326,7 +340,7 @@ void on_trackbar_video(int, void*) {
 
 		++frameNum;
 
-		imshow("Image", frame);
+		imshow("Image", resize);
 
 		c = cvWaitKey(10);  // waits a key press to advance to the next frame
 		if (c == 27) {
