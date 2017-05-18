@@ -53,9 +53,24 @@ Point findMinumum(Mat img, Point center){
 
 	for (int i = -1; i <= 1; i++){
 		for (int j = -1; j <= 1; j++){
-			Vec3d p1 = img.at<Vec3d>(center.x + i + 1, center.y + j);
-			Vec3d p2 = img.at<Vec3d>(center.x + i, center.y + j + 1);
-			Vec3d p3 = img.at<Vec3d>(center.x + i, center.y + j);
+			Vec3d p1;
+			Vec3d p2;
+			Vec3d p3; 
+
+			if ((center.x + i + 1 >= 0) && (center.x + i + 1 < img.rows) && (center.y + j >= 0) && (center.y + j < img.cols))
+				p1 = img.at<Vec3d>(center.x + i + 1, center.y + j);
+			else
+				p1 = Vec3d(0.0, 0.0, 0.0);
+
+			if ((center.x + i >= 0) && (center.x + i < img.rows) && (center.y + j + 1 >= 0) && (center.y + j + 1< img.cols))
+				p2 = img.at<Vec3d>(center.x + i, center.y + j + 1);
+			else
+				p2 = Vec3d(0.0, 0.0, 0.0);
+
+			if ((center.x + i >= 0) && (center.x + i < img.rows) && (center.y + j >= 0) && (center.y + j < img.cols))
+				p3 = img.at<Vec3d>(center.x + i, center.y + j);
+			else
+				p3 = Vec3d(0.0, 0.0, 0.0);
 
 			double c1 = (p1[0] + p1[1] + p1[2]) / 3.0;
 			double c2 = (p2[0] + p2[1] + p2[2]) / 3.0;
