@@ -38,7 +38,6 @@ Structura Slic de la inceputul fisierului contine:
  
  Metodele findLABSpaceValue(double t, double eps), BGR2LAB(Vec3b pixel),RGB2LABConversion(Mat src) le-am folosit pentru a realiza manual
  convrsia din spatiul de culoare BGR in spatiul de culoare LAB. Rezultatul nu este cel obtinut cu cel al mtodei predefinite din 
- opencv. Modul de calculare poate fi gasit pe site-ul lor de conversii. As pune link-ul dar momentan nu imi permite netul din camin
- sa intru pe site-ul lor.
+ opencv. Modul de calculare poate fi gasit pe site-ul lor de conversii: http://docs.opencv.org/3.1.0/de/d25/imgproc_color_conversions.html la sectiunea RGB ↔ CIE L*a*b*
  
  
