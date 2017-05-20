@@ -4,10 +4,10 @@
 
 typedef struct{
 	int step;
-	int constantM;
+	double constantM;
 	vector<vector<int>> labels;
 	vector<vector<double>> distances;
-	vector<int> occurrencesCluster;
+	vector<double> occurrencesCluster;
 	vector<vector<double>> clusters;
 }Slic;
 
@@ -100,8 +100,8 @@ void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 		slic->distances.push_back(dst);
 	}
 
-	for (int i = slic->step / 2; i < img.rows - slic->step / 2; i += slic->step){
-		for (int j = slic->step / 2; j < img.cols - slic->step / 2; j += slic->step){
+	for (int i = slic->step / 2; i < img.rows; i += slic->step){
+		for (int j = slic->step / 2; j < img.cols; j += slic->step){
 			Point minim_point = findMinumum(img, Point(i, j));
 			Vec3b color = img.at<Vec3b>(minim_point.x, minim_point.y);
 			center.clear();
@@ -113,7 +113,7 @@ void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 			center.push_back((double)minim_point.y);
 
 			slic->clusters.push_back(center);
-			slic->occurrencesCluster.push_back(0);
+			slic->occurrencesCluster.push_back(0.0);
 		}
 	}
 }
@@ -133,6 +133,17 @@ void initializeDistances(Slic* slic){
 			slic->distances.at(i).at(j) = DBL_MAX;
 }
 
+void CleanClusters(Slic* slic){
+	for (int k = 0; k < slic->clusters.size(); k++){
+		slic->clusters.at(k).at(0) = 0.0;
+		slic->clusters.at(k).at(1) = 0.0;
+		slic->clusters.at(k).at(2) = 0.0;
+		slic->clusters.at(k).at(3) = 0.0;
+		slic->clusters.at(k).at(4) = 0.0;
+		slic->occurrencesCluster.at(k) = 0.0;
+	}
+}
+
 double findDistance(Point position, Vec3b color, int cluster, Slic* slic){
 	double spatialDistance = 0.0;
 	double colorDistance = 0.0;
@@ -142,7 +153,7 @@ double findDistance(Point position, Vec3b color, int cluster, Slic* slic){
 	spatialDistance = sqrt(pow(clusterCenter[3] - (double)position.x, 2.0) + pow(clusterCenter[4] - (double)position.y, 2.0));
 
 	colorDistance = colorDistance / slic->step;
-	spatialDistance = spatialDistance / (double)slic->constantM;
+	spatialDistance = spatialDistance / slic->constantM;
 	return sqrt(pow(colorDistance, 2.0) + pow(spatialDistance, 2.0));
 }
 
@@ -189,45 +200,57 @@ void displayContours(Mat img, Slic* slic){
 		}
 	}
 
-	for (int i = 0; i < img.rows; i++)
-		for (int j = 0; j < img.cols; j++)
-			dest.at<Vec3b>(i, j) = Vec3b(255, 255, 255);
+	for (int i = 0; i < contourPoints.size(); i++){
+		Point position = contourPoints.at(i);
+		dest.at<Vec3b>(position.x, position.y) = Vec3b(255, 255, 255);
+	}
 
 	imshow("Superpixel", dest);
 }
 
-void colorByClusters(Mat src, Slic* slic){
-	vector<Vec3b> clustersColors(slic->clusters.size(), Vec3b(0, 0, 0));
+void colorByClusters(Mat src,Slic* slic){
+	vector<vector<long int>> clustersColors;
 	Mat dest = src.clone();
 
+	vector<long int> initialize;
+	initialize.push_back(0);
+	initialize.push_back(0);
+	initialize.push_back(0);
+	for (int i = 0; i < slic->clusters.size(); i++){
+		clustersColors.push_back(initialize);
+	}
+	
 	for (int i = 0; i < src.rows; i++){
 		for (int j = 0; j < src.cols; j++){
 			int label = slic->labels.at(i).at(j);
 			if (label > 0){
 				Vec3b color = src.at<Vec3b>(i, j);
-				clustersColors.at(label).val[0] += color.val[0];
-				clustersColors.at(label).val[1] += color.val[1];
-				clustersColors.at(label).val[2] += color.val[2];
+				clustersColors.at(label).at(0) += color[0];
+				clustersColors.at(label).at(1) += color[1];
+				clustersColors.at(label).at(2) += color[2];
 			}
 		}
 	}
 
 	for (int i = 0; i < clustersColors.size(); i++){
-		if (slic->occurrencesCluster.at(i) != 0){
-			clustersColors.at(i).val[0] = clustersColors.at(i).val[0] / slic->occurrencesCluster.at(i);
-			clustersColors.at(i).val[1] = clustersColors.at(i).val[1] / slic->occurrencesCluster.at(i);
-			clustersColors.at(i).val[2] = clustersColors.at(i).val[2] / slic->occurrencesCluster.at(i);
+		if (slic->occurrencesCluster.at(i) != 0.0){
+			clustersColors.at(i).at(0) = clustersColors.at(i).at(0) / slic->occurrencesCluster.at(i);
+			clustersColors.at(i).at(1) = clustersColors.at(i).at(1) / slic->occurrencesCluster.at(i);
+			clustersColors.at(i).at(2) = clustersColors.at(i).at(2) / slic->occurrencesCluster.at(i);
 		}
 	}
-
+	
 	for (int i = 0; i < src.rows; i++){
 		for (int j = 0; j < src.cols; j++){
-			if (slic->labels.at(i).at(j) > 0)
-				dest.at<Vec3b>(i, j) = clustersColors.at(slic->labels.at(i).at(j));
+			if (slic->labels.at(i).at(j) > 0){
+				initialize = clustersColors.at(slic->labels.at(i).at(j));
+				dest.at<Vec3b>(i, j) = Vec3b(initialize.at(0), initialize.at(1), initialize.at(2));
+			}
 		}
 	}
 
-	displayContours(dest, slic);
+	imshow("Superpixel", dest);
+	//displayContours(dest, slic);
 }
 
 void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
@@ -236,24 +259,58 @@ void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
 	clear(slic);
 	initialize(img, superpixelNr, slic, constantM);
 
-	for (int k = 0; k < slic->clusters.size(); k++){
-		for (int i = -slic->step; i < slic->step; i++){
-			for (int j = -slic->step; j < slic->step; j++){
-				int row = slic->clusters.at(k).at(3);
-				int col = slic->clusters.at(k).at(4);
+	for (int iteration = 0; iteration < 10; iteration++){
 
-				if ((row >= 0) && (row < img.rows) && (col >= 0) && (col < img.cols)){
-					Vec3b color = src.at<Vec3b>(row, col);
-					double distance = findDistance(Point(row, col), color, k, slic);
-					if (distance < slic->distances.at(row).at(col)){
-						slic->distances.at(row).at(col) = distance;
-						slic->labels.at(row).at(col) = k;
+		initializeDistances(slic);
+
+		for (int k = 0; k < slic->clusters.size(); k++){
+			for (int i = -slic->step; i < slic->step; i++){
+				for (int j = -slic->step; j < slic->step; j++){
+
+					int row = slic->clusters.at(k).at(3) + i;
+					int col = slic->clusters.at(k).at(4) + j;
+
+					if ((row >= 0) && (row < img.rows) && (col >= 0) && (col < img.cols)){
+						Vec3b color = src.at<Vec3b>(row, col);
+						double distance = findDistance(Point(row, col), color, k, slic);
+						if (distance < slic->distances.at(row).at(col)){
+							slic->distances.at(row).at(col) = distance;
+							slic->labels.at(row).at(col) = k;
+						}
 					}
 				}
 			}
 		}
+
+		CleanClusters(slic);
+
+		for (int i = 0; i < img.rows; i++){
+			for (int j = 0; j < img.cols; j++){
+				
+				int index = slic->labels.at(i).at(j);
+
+				if (index >= 0){
+					Vec3b color = img.at<Vec3b>(i, j);
+					slic->clusters.at(index).at(0) += color[0];
+					slic->clusters.at(index).at(1) += color[1];
+					slic->clusters.at(index).at(2) += color[2];
+					slic->clusters.at(index).at(3) += i;
+					slic->clusters.at(index).at(4) += j;
+					slic->occurrencesCluster.at(index) += 1.0;
+				}
+			}
+		}
+
+		for (int k = 0; k < slic->clusters.size(); k++){
+			slic->clusters.at(k).at(0) /= slic->occurrencesCluster.at(k);
+			slic->clusters.at(k).at(1) /= slic->occurrencesCluster.at(k);
+			slic->clusters.at(k).at(2) /= slic->occurrencesCluster.at(k);
+			slic->clusters.at(k).at(3) /= slic->occurrencesCluster.at(k);
+			slic->clusters.at(k).at(4) /= slic->occurrencesCluster.at(k);
+		}
 	}
 
+	//displayClusters(src, slic);
 	colorByClusters(src, slic);
 }
 
@@ -318,9 +375,8 @@ void on_trackbar(int, void*){
 
 	Slic slic;
 	Mat src;
-
 	src = imread(fname, CV_LOAD_IMAGE_COLOR);
-	generateSuperpixel(src, k_slider + 1, m_slider + 1, &slic);
+	generateSuperpixel(src, k_slider + 1, 20.0, &slic);
 	std::cout << "Grid step: " << slic.step << std::endl;
 	imshow("Image", src);
 }
@@ -364,7 +420,7 @@ void on_trackbar_video(int, void*) {
 		}
 
 
-		generateSuperpixel(resize, k_slider + 1, m_slider + 1, &slic);
+		generateSuperpixel(resize, k_slider + 1, 20.0, &slic);
 
 		if (frame.empty())
 		{
@@ -391,7 +447,7 @@ int main()
 {
 	int op;
 	int k_slider_maxim;
-	int m_slider_maxim;
+	Slic slic;
 
 	do
 	{
@@ -428,27 +484,30 @@ int main()
 				break;
 
 			case 2:
+				printf("Number superpixel: ");
+				scanf("%d", &k_slider);
+
 				while (openFileDlg(fname))
 				{
-					namedWindow("TrackBar", 1);
-					resizeWindow("TrackBar", 1000, 100);
+					//namedWindow("TrackBar", 1);
+					//resizeWindow("TrackBar", 1000, 50);
 
 					Mat src;
+					Mat img;
 					src = imread(fname, CV_LOAD_IMAGE_COLOR);
-					imshow("Image", src);
-					imshow("Center", src);
+					resize(src, img, Size(256, 256), 0, 0, INTER_NEAREST);
 
-					char TrackbarName[50];
-					k_slider_maxim = (src.rows * src.cols) / 9 - 1;
-					m_slider_maxim = 500;
-					sprintf(TrackbarName, "K %d", k_slider_maxim);
-					createTrackbar(TrackbarName, "TrackBar", &k_slider, k_slider_maxim, on_trackbar);
-					sprintf(TrackbarName, "M %d", m_slider_maxim);
-					createTrackbar(TrackbarName, "TrackBar", &m_slider, m_slider_maxim, on_trackbar);
+					//char TrackbarName[50];
+					//k_slider_maxim = (src.rows * src.cols) / 9 - 1;
+					//sprintf(TrackbarName, "K %d", k_slider_maxim);
+					//createTrackbar(TrackbarName, "TrackBar", &k_slider, k_slider_maxim, on_trackbar);
+					generateSuperpixel(img, k_slider, 20.0, &slic);
+					imshow("Image", img);
 					waitKey(0);
 					destroyAllWindows();
 				}
 				break;
+
 			case 3:
 
 				Mat frame;
@@ -458,22 +517,15 @@ int main()
 				cap >> frame; // get 1 frame from the camera;
 
 				k_slider_maxim = (frame.rows * frame.cols) / 9 - 1;
-				m_slider_maxim = 500;
-
 				namedWindow("TrackBar", 1);
-				resizeWindow("TrackBar", 1000, 100);
+				resizeWindow("TrackBar", 1000, 50);
 
 
 				char TrackbarNameVideo[50];
 
 				sprintf(TrackbarNameVideo, "K %d", k_slider_maxim);
 				createTrackbar(TrackbarNameVideo, "TrackBar", &k_slider, k_slider_maxim, on_trackbar_video);
-				sprintf(TrackbarNameVideo, "M %d", m_slider_maxim);
-				createTrackbar(TrackbarNameVideo, "TrackBar", &m_slider, m_slider_maxim, on_trackbar_video);
-
-			
-
-
+	
 				waitKey(0);
 				destroyAllWindows();
 
