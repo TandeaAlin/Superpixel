@@ -48,36 +48,29 @@ void showHistogram(const string& name, int* hist, const int  hist_cols, const in
 }
 
 Point findMinumum(Mat img, Point center){
-	double min = FLT_MAX;
+	double min = DBL_MAX;
 	Point min_point = Point(center.x, center.y);
 
 	for (int i = -1; i <= 1; i++){
 		for (int j = -1; j <= 1; j++){
-			Vec3d p1;
-			Vec3d p2;
-			Vec3d p3; 
+			Vec3b p1 = Vec3b(0, 0, 0);
+			Vec3b p2 = Vec3b(0, 0, 0);
+			Vec3b p3 = Vec3b(0, 0, 0);
 
 			if ((center.x + i + 1 >= 0) && (center.x + i + 1 < img.rows) && (center.y + j >= 0) && (center.y + j < img.cols))
-				p1 = img.at<Vec3d>(center.x + i + 1, center.y + j);
-			else
-				p1 = Vec3d(0.0, 0.0, 0.0);
-
+				p1 = img.at<Vec3b>(center.x + i + 1, center.y + j);
 			if ((center.x + i >= 0) && (center.x + i < img.rows) && (center.y + j + 1 >= 0) && (center.y + j + 1< img.cols))
-				p2 = img.at<Vec3d>(center.x + i, center.y + j + 1);
-			else
-				p2 = Vec3d(0.0, 0.0, 0.0);
-
+				p2 = img.at<Vec3b>(center.x + i, center.y + j + 1);
 			if ((center.x + i >= 0) && (center.x + i < img.rows) && (center.y + j >= 0) && (center.y + j < img.cols))
-				p3 = img.at<Vec3d>(center.x + i, center.y + j);
-			else
-				p3 = Vec3d(0.0, 0.0, 0.0);
+				p3 = img.at<Vec3b>(center.x + i, center.y + j);
+		
+			double c1 = sqrt(pow((double)(p1[0] - p3[0]), 2.0)) + sqrt(pow((double)(p2[0] - p3[0]), 2.0));
+			double c2 = sqrt(pow((double)(p1[1] - p3[1]), 2.0)) + sqrt(pow((double)(p2[1] - p3[1]), 2.0));
+			double c3 = sqrt(pow((double)(p1[2] - p3[2]), 2.0)) + sqrt(pow((double)(p2[2] - p3[2]), 2.0));
 
-			double c1 = (p1[0] + p1[1] + p1[2]) / 3.0;
-			double c2 = (p2[0] + p2[1] + p2[2]) / 3.0;
-			double c3 = (p3[0] + p3[1] + p3[2]) / 3.0;
-
-			if (sqrt(pow(c1 - c3, 2.0)) + sqrt(pow(c2 - c3, 2.0)) < min){
-				min = fabs(c1 - c3) + fabs(c2 - c3);
+			if ((c1 + c2 + c3) < min){
+				min = fabs((double)(p1[0] - p3[0])) + fabs((double)(p2[0] - p3[0])) + fabs((double)(p1[1] - p3[1])) + fabs((double)(p2[1] - p3[1])) + 
+					fabs((double)(p1[2] - p3[2])) + fabs((double)(p2[2] - p3[2]));
 				min_point.x = center.x + i;
 				min_point.y = center.y + j;
 			}
@@ -88,11 +81,9 @@ Point findMinumum(Mat img, Point center){
 	return min_point;
 }
 
-void initialize(Mat src, int superpixelNr, Slic* slic, int constantM){
-	Mat img;
-	src.convertTo(img, CV_64FC3);
+void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 	vector<double> center;
-	slic->step = (int)sqrt((double)(src.rows * src.cols) / (double)superpixelNr);
+	slic->step = (int)sqrt((double)(img.rows * img.cols) / (double)superpixelNr);
 	slic->constantM = constantM;
 
 	for (int i = 0; i < img.rows; i++){
@@ -102,7 +93,7 @@ void initialize(Mat src, int superpixelNr, Slic* slic, int constantM){
 		for (int j = 0; j < img.cols; j++){
 
 			lb.push_back(-1);
-			dst.push_back(FLT_MAX);
+			dst.push_back(DBL_MAX);
 		}
 
 		slic->labels.push_back(lb);
@@ -112,12 +103,12 @@ void initialize(Mat src, int superpixelNr, Slic* slic, int constantM){
 	for (int i = slic->step / 2; i < img.rows - slic->step / 2; i += slic->step){
 		for (int j = slic->step / 2; j < img.cols - slic->step / 2; j += slic->step){
 			Point minim_point = findMinumum(img, Point(i, j));
-			Vec3d color = img.at<Vec3d>(minim_point.x, minim_point.y);
+			Vec3b color = img.at<Vec3b>(minim_point.x, minim_point.y);
 			center.clear();
 
-			center.push_back(color[0]);
-			center.push_back(color[1]);
-			center.push_back(color[2]);
+			center.push_back((double)color[0]);
+			center.push_back((double)color[1]);
+			center.push_back((double)color[2]);
 			center.push_back((double)minim_point.x);
 			center.push_back((double)minim_point.y);
 
@@ -136,47 +127,141 @@ void clear(Slic* slic){
 	slic->constantM = 0;
 }
 
-double findDistance(Point position, Vec3d color, int cluster, Slic* slic){
+void initializeDistances(Slic* slic){
+	for (int i = 0; i < slic->distances.size(); i++)
+		for (int j = 0; j < slic->distances.at(i).size(); j++)
+			slic->distances.at(i).at(j) = DBL_MAX;
+}
+
+double findDistance(Point position, Vec3b color, int cluster, Slic* slic){
 	double spatialDistance = 0.0;
-	double colorDistance = 0.0f;
+	double colorDistance = 0.0;
 	vector<double> clusterCenter = slic->clusters.at(cluster);
 
-	colorDistance = sqrt(pow(clusterCenter[0] - color[0], 2.0) + pow(clusterCenter[1] - color[1], 2.0) + pow(clusterCenter[2] - color[2], 2.0));
+	colorDistance = sqrt(pow(clusterCenter[0] - (double)color[0], 2.0) + pow(clusterCenter[1] - (double)color[1], 2.0) + pow(clusterCenter[2] - (double)color[2], 2.0));
 	spatialDistance = sqrt(pow(clusterCenter[3] - (double)position.x, 2.0) + pow(clusterCenter[4] - (double)position.y, 2.0));
 
 	colorDistance = colorDistance / slic->step;
 	spatialDistance = spatialDistance / (double)slic->constantM;
-
 	return sqrt(pow(colorDistance, 2.0) + pow(spatialDistance, 2.0));
 }
 
 
 void displayClusters(Mat src, Slic* slic){
 	Mat dest = src.clone();
-	//std::cout << slic->clusters.size() << std::endl;
 
-	for (int i = 0; i < slic->clusters.size(); i++){
+	for (int i = 0; i < slic->clusters.size(); i++)
 		circle(dest, Point(slic->clusters.at(i).at(3), slic->clusters.at(i).at(4)), 1, Scalar(0, 0, 255));
-	}
 
 	imshow("Center", dest);
 }
 
-void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
-	clear(slic);
-	initialize(src, superpixelNr, slic, constantM);
-	displayClusters(src, slic);
+void displayContours(Mat img, Slic* slic){
+	Mat dest = img.clone();
+	int dx[] = { -1, -1, -1, 0, 0, 1, 1, 1 };
+	int dy[] = { -1, 0, 1, -1, 1, -1, 0, 1 };
+	vector<Point> contourPoints;
+	vector<vector<bool>> isContourPixel;
+
+	for (int i = 0; i < img.rows; i++){
+		vector<bool> contourLine;
+		for (int j = 0; j < img.cols; j++)
+			contourLine.push_back(false);
+		isContourPixel.push_back(contourLine);
+	}
+
+	for (int i = 0; i < img.rows; i++){
+		for (int j = 0; j < img.cols; j++){
+			int pixelNr = 0;
+
+			for (int k = 0; k < 8; k++){
+				int line = i + dx[i];
+				int col = j + dx[j];
+				if ((line >= 0) && (line < img.rows) && (col >= 0) && (col < img.cols))
+					if (!isContourPixel.at(i).at(j) && slic->labels.at(i).at(j) != slic->labels.at(line).at(col))
+						pixelNr += 1;
+			}
+
+			if (pixelNr > 1){
+				isContourPixel.at(i).at(j) = true;
+				contourPoints.push_back(Point(i, j));
+			}
+		}
+	}
+
+	for (int i = 0; i < img.rows; i++)
+		for (int j = 0; j < img.cols; j++)
+			dest.at<Vec3b>(i, j) = Vec3b(255, 255, 255);
+
+	imshow("Superpixel", dest);
 }
 
-vector<vector<int>> getLabels(Slic* slic){
-	return slic->labels;
+void colorByClusters(Mat src, Slic* slic){
+	vector<Vec3b> clustersColors(slic->clusters.size(), Vec3b(0, 0, 0));
+	Mat dest = src.clone();
+
+	for (int i = 0; i < src.rows; i++){
+		for (int j = 0; j < src.cols; j++){
+			int label = slic->labels.at(i).at(j);
+			if (label > 0){
+				Vec3b color = src.at<Vec3b>(i, j);
+				clustersColors.at(label).val[0] += color.val[0];
+				clustersColors.at(label).val[1] += color.val[1];
+				clustersColors.at(label).val[2] += color.val[2];
+			}
+		}
+	}
+
+	for (int i = 0; i < clustersColors.size(); i++){
+		if (slic->occurrencesCluster.at(i) != 0){
+			clustersColors.at(i).val[0] = clustersColors.at(i).val[0] / slic->occurrencesCluster.at(i);
+			clustersColors.at(i).val[1] = clustersColors.at(i).val[1] / slic->occurrencesCluster.at(i);
+			clustersColors.at(i).val[2] = clustersColors.at(i).val[2] / slic->occurrencesCluster.at(i);
+		}
+	}
+
+	for (int i = 0; i < src.rows; i++){
+		for (int j = 0; j < src.cols; j++){
+			if (slic->labels.at(i).at(j) > 0)
+				dest.at<Vec3b>(i, j) = clustersColors.at(slic->labels.at(i).at(j));
+		}
+	}
+
+	displayContours(dest, slic);
+}
+
+void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
+	Mat img(src.rows, src.cols, CV_8UC3);
+	cvtColor(src, img, CV_BGR2Lab, 3);
+	clear(slic);
+	initialize(img, superpixelNr, slic, constantM);
+
+	for (int k = 0; k < slic->clusters.size(); k++){
+		for (int i = -slic->step; i < slic->step; i++){
+			for (int j = -slic->step; j < slic->step; j++){
+				int row = slic->clusters.at(k).at(3);
+				int col = slic->clusters.at(k).at(4);
+
+				if ((row >= 0) && (row < img.rows) && (col >= 0) && (col < img.cols)){
+					Vec3b color = src.at<Vec3b>(row, col);
+					double distance = findDistance(Point(row, col), color, k, slic);
+					if (distance < slic->distances.at(row).at(col)){
+						slic->distances.at(row).at(col) = distance;
+						slic->labels.at(row).at(col) = k;
+					}
+				}
+			}
+		}
+	}
+
+	colorByClusters(src, slic);
 }
 
 void createConnectivity(Mat* src){
 
 }
 
-float findLABSpaceValue(double t, double eps){
+double findLABSpaceValue(double t, double eps){
 	 
 	if (t > eps)
 		return pow(t, 1.0 / 3.0);
@@ -184,9 +269,9 @@ float findLABSpaceValue(double t, double eps){
 		return 7.787 * t + 16.0 / 116.0;
 }
 
-Vec3d BGR2LAB(Vec3b pixel){
+Vec3b BGR2LAB(Vec3b pixel){
 	
-	Vec3d LAB;
+	Vec3b LAB;
 	double X, Y, Z;
 	double eps1 = 0.008856;
 	double eps2 = 903.3;
@@ -219,61 +304,10 @@ Vec3d BGR2LAB(Vec3b pixel){
 Mat RGB2LABConversion(Mat src){
 
 	Mat dest(src.rows, src.cols, CV_8UC3);
-	int mina, minb, minl, maxa, maxb, maxl;
-	mina = INT_MAX;
-	minb = INT_MAX;
-	minl = INT_MAX;
-	maxa = INT_MIN;
-	maxb = INT_MIN;
-	maxl = INT_MIN;
 
 	for (int i = 0; i < src.rows; i++){
 		for (int j = 0; j < src.cols; j++){
-			Vec3b pixel = src.at<Vec3b>(i, j);
 			dest.at<Vec3b>(i, j) = BGR2LAB(src.at<Vec3b>(i, j));
-
-			if (mina > pixel[1])
-				mina = pixel[1];
-			if (maxa < pixel[1])
-				maxa = pixel[1];
-			if (minl > pixel[0])
-				minl = pixel[0];
-			if (maxl < pixel[0])
-				maxl = pixel[0];
-			if (minb > pixel[2])
-				minb = pixel[2];
-			if (maxb < pixel[2])
-				maxb = pixel[2];
-		}
-	}
-
-	printf("LMin: %d\nLMax: %d\nAMin: %d\nAMax: %d\n BMin: %d\n BMax: %d\n", minl, maxl, mina, maxa, minb, maxb);
-	return dest;
-}
-
-Mat colorByClusters(Mat src, Slic* slic){
-	vector<Vec3b> clustersColors(slic->clusters.size());
-	Mat dest(src.rows, src.cols, CV_8UC3);
-
-	for (int i = 0; i < src.rows; i++){
-		for (int j = 0; j < src.cols; j++){
-			int label = slic->labels.at(i).at(j);
-			Vec3b color = src.at<Vec3b>(i, j);
-			clustersColors.at(label).val[0] += color.val[0];
-			clustersColors.at(label).val[1] += color.val[1];
-			clustersColors.at(label).val[2] += color.val[2];
-		}
-	}
-
-	for (int i = 0; i < clustersColors.size(); i++){
-		clustersColors.at(i).val[0] = clustersColors.at(i).val[0] / slic->occurrencesCluster.at(i);
-		clustersColors.at(i).val[1] = clustersColors.at(i).val[1] / slic->occurrencesCluster.at(i);
-		clustersColors.at(i).val[2] = clustersColors.at(i).val[2] / slic->occurrencesCluster.at(i);
-	}
-
-	for (int i = 0; i < src.rows; i++){
-		for (int j = 0; j < src.cols; j++){
-			dest.at<Vec3b>(i, j) = clustersColors.at(slic->labels.at(i).at(j));
 		}
 	}
 
