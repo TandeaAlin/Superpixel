@@ -15,56 +15,48 @@ int k_slider;
 int m_slider;
 char fname[MAX_PATH];
 
-double findLABSpaceValue(double t, double eps){
+Vec3b BGR2HSV(Vec3b pixel){
+	double r = (double)pixel[2] / 255.0;
+	double g = (double)pixel[1] / 255.0;
+	double b = (double)pixel[0] / 255.0;
 
-	if (t > eps)
-		return pow(t, 1.0 / 3.0);
-	else
-		return 7.787 * t + 16.0 / 116.0;
-}
+	double M = max(max(r, g), b);
+	double m = min(min(r, g), b);
+	double C = M - m;
 
-Vec3b BGR2LAB(Vec3b pixel){
+	double V = M;
+	double S = 0.0;
+	double H = 0.0;
 
-	Vec3b LAB;
-	double X, Y, Z;
-	double eps1 = 0.008856;
-	double eps2 = 903.3;
-	double XR = 0.950456;
-	double YR = 1.0f;
-	double ZR = 1.088754;
+	if (C)
+		S = C / V;
 
-	double B = (double)pixel[0] / 255.0;
-	double G = (double)pixel[1] / 255.0;
-	double R = (double)pixel[2] / 255.0;
-
-	X = R * 0.412453 + G * 0.357580 + B * 0.180423;
-	Y = R * 0.212671 + G * 0.715160 + B * 0.072169;
-	Z = R * 0.019334 + G * 0.119193 + B * 0.950227;
-
-	double xr = X / XR;
-	double yr = Y / YR;
-	double zr = Z / ZR;
-
-	LAB[0] = (yr > eps1) ? (116.0 * pow(yr, 1.0 / 3.0) - 16.0) : (eps2 * yr);
-	LAB[1] = 500.0 * (findLABSpaceValue(xr, eps1) - findLABSpaceValue(yr, eps1));
-	LAB[2] = 200.0 * (findLABSpaceValue(yr, eps1) - findLABSpaceValue(zr, eps1));
-
-	LAB[0] = LAB[0] * 255 / 100;
-	LAB[1] = LAB[1] + 128;
-	LAB[2] = LAB[2] + 128;
-	return LAB;
-}
-
-Mat BGR2LABConversion(Mat src){
-
-	Mat dest(src.rows, src.cols, CV_8UC3);
-
-	for (int i = 0; i < src.rows; i++){
-		for (int j = 86; j < src.cols; j++){
-			dest.at<Vec3b>(i, j) = BGR2LAB(src.at<Vec3b>(i, j));
-		}
+	if (C){
+		if (M == r)
+			H = 60.0 * (g - b) / C;
+		if (M == g)
+			H = 120.0 + 60.0 * (b - r) / C;
+		if (M == b)
+			H = 240.0 + 60.0 * (r - g) / C;
 	}
 
+	if (H < 0.0)
+		H = H + 360.0;
+
+	H = H * 255.0 / 360.0;
+	S = S * 255.0;
+	V = V * 255.0;
+
+	return Vec3b((uchar)H, (uchar)S, (uchar)V);
+}
+
+Mat BGR2HSVConversion(Mat img){
+	Mat dest(img.rows, img.cols, CV_8UC3);
+
+	for (int i = 0; i < img.rows; i++)
+		for (int j = 0; j < img.cols; j++)
+			dest.at<Vec3b>(i, j) = BGR2HSV(img.at<Vec3b>(i, j));
+		
 	return dest;
 }
 
@@ -72,7 +64,7 @@ Point findMinumum(Mat img, Point center){
 	double min = DBL_MAX;
 	Point min_point = Point(center.x, center.y);
 
-	for (int i = -1; i <= 1; i++){
+	for (int i = -1; i <= 1; i++)
 		for (int j = -1; j <= 1; j++){
 			Vec3b p1 = Vec3b(0, 0, 0);
 			Vec3b p2 = Vec3b(0, 0, 0);
@@ -85,19 +77,16 @@ Point findMinumum(Mat img, Point center){
 			if ((center.x + i >= 0) && (center.x + i < img.rows) && (center.y + j >= 0) && (center.y + j < img.cols))
 				p3 = img.at<Vec3b>(center.x + i, center.y + j);
 
-			double c1 = sqrt(pow((double)(p1[0] - p3[0]), 2.0)) + sqrt(pow((double)(p2[0] - p3[0]), 2.0));
 			double c2 = sqrt(pow((double)(p1[1] - p3[1]), 2.0)) + sqrt(pow((double)(p2[1] - p3[1]), 2.0));
 			double c3 = sqrt(pow((double)(p1[2] - p3[2]), 2.0)) + sqrt(pow((double)(p2[2] - p3[2]), 2.0));
 
-			if ((c1 + c2 + c3) < min){
-				min = fabs((double)(p1[0] - p3[0])) + fabs((double)(p2[0] - p3[0])) + fabs((double)(p1[1] - p3[1])) + fabs((double)(p2[1] - p3[1])) +
-					fabs((double)(p1[2] - p3[2])) + fabs((double)(p2[2] - p3[2]));
+			if ((c2 + c3) < min){
+				min = fabs((double)(p1[1] - p3[1])) + fabs((double)(p2[1] - p3[1])) + fabs((double)(p1[2] - p3[2])) + fabs((double)(p2[2] - p3[2]));
 				min_point.x = center.x + i;
 				min_point.y = center.y + j;
 			}
 
 		}
-	}
 
 	return min_point;
 }
@@ -121,7 +110,7 @@ void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 		slic->distances.push_back(dst);
 	}
 
-	for (int i = slic->step / 2; i < img.rows; i += slic->step){
+	for (int i = slic->step / 2; i < img.rows; i += slic->step)
 		for (int j = slic->step / 2; j < img.cols; j += slic->step){
 			Point minim_point = findMinumum(img, Point(i, j));
 			Vec3b color = img.at<Vec3b>(minim_point.x, minim_point.y);
@@ -136,7 +125,6 @@ void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 			slic->clusters.push_back(center);
 			slic->occurrencesCluster.push_back(0.0);
 		}
-	}
 }
 
 void clear(Slic* slic){
@@ -196,11 +184,10 @@ void colorByClusters(Mat src, Slic* slic){
 	initialize.push_back(0);
 	initialize.push_back(0);
 	initialize.push_back(0);
-	for (int i = 0; i < slic->clusters.size(); i++){
+	for (int i = 0; i < slic->clusters.size(); i++)
 		clustersColors.push_back(initialize);
-	}
 	
-	for (int i = 0; i < src.rows; i++){
+	for (int i = 0; i < src.rows; i++)
 		for (int j = 0; j < src.cols; j++){
 			int label = slic->labels.at(i).at(j);
 			if (label >= 0){
@@ -210,43 +197,81 @@ void colorByClusters(Mat src, Slic* slic){
 				clustersColors.at(label).at(2) += color[2];
 			}
 		}
-	}
 
-	for (int i = 0; i < clustersColors.size(); i++){
+	for (int i = 0; i < clustersColors.size(); i++)
 		if (slic->occurrencesCluster.at(i) != 0.0){
 			clustersColors.at(i).at(0) = clustersColors.at(i).at(0) / slic->occurrencesCluster.at(i);
 			clustersColors.at(i).at(1) = clustersColors.at(i).at(1) / slic->occurrencesCluster.at(i);
 			clustersColors.at(i).at(2) = clustersColors.at(i).at(2) / slic->occurrencesCluster.at(i);
 		}
-	}
 	
-	for (int i = 0; i < src.rows; i++){
-		for (int j = 0; j < src.cols; j++){
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 0; j < src.cols; j++)
 			if (slic->labels.at(i).at(j) >= 0){
 				initialize = clustersColors.at(slic->labels.at(i).at(j));
 				dest.at<Vec3b>(i, j) = Vec3b(initialize.at(0), initialize.at(1), initialize.at(2));
 			}
-		}
-	}
 
-	displayClusters(src, slic);
 	imshow("Superpixel", dest);
 }
 
-void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
+void display_contours(Mat src, Slic* slic) {
+	const int dx[] = { -1, -1, -1, 0, 0, 1, 1, 1 };
+	const int dy[] = { -1, 0, 1, -1, 1, -1, 0, 1 };
+	Mat dest = src.clone();
+
+	vector<Point> contourPoints;
+	vector<vector<bool>> isselected;
+	for (int i = 0; i < src.rows; i++) {
+		vector<bool> neg;
+		for (int j = 0; j < src.cols; j++) 
+			neg.push_back(false);
+
+		isselected.push_back(neg);
+	}
+
+	for (int i = 0; i < src.rows; i++)
+		for (int j = 4; j < src.cols; j++) {
+			int pixelNumber = 0;
+
+			for (int k = 0; k < 8; k++) {
+				int x = i + dx[k], y = j + dy[k];
+
+				if (x >= 0 && x < src.rows && y >= 0 && y < src.cols) 
+					if (isselected.at(x).at(y) == false && slic->labels.at(i).at(j) != slic->labels.at(x).at(y)) {
+						pixelNumber += 1;
+					}
+			}
+
+			if (pixelNumber > 1) {
+				contourPoints.push_back(Point(i, j));
+				isselected.at(i).at(j) = true;
+			}
+		}
+
+	for (int i = 0; i < contourPoints.size(); i++) {
+		Point pixel = contourPoints.at(i);
+		dest.at<Vec3b>(pixel.x, pixel.y) = Vec3b(0, 0, 0);
+	}
+
+	imshow("Contour", dest);
+	//displayClusters(dest, slic);
+}
+
+void generateSuperpixel(Mat src, int superpixelNr, Slic* slic){
 	Mat dest(src.rows, src.cols, CV_8UC3);
 	Mat img(src.rows, src.cols, CV_8UC3);
 
 	clear(slic);
-	img = BGR2LABConversion(src);
+	img = BGR2HSVConversion(src);
 	initialize(img, superpixelNr, slic, 20.0);
 
-	for (int iteration = 0; iteration < 10; iteration++){
+	for (int iteration = 0; iteration < 20; iteration++){
 
 		initializeDistances(slic);
 
-		for (int k = 0; k < slic->clusters.size(); k++){
-			for (int i = -slic->step; i < slic->step; i++){
+		for (int k = 0; k < slic->clusters.size(); k++)
+			for (int i = -slic->step; i < slic->step; i++)
 				for (int j = -slic->step; j < slic->step; j++){
 
 					int row = slic->clusters.at(k).at(3) + i;
@@ -261,12 +286,10 @@ void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
 						}
 					}
 				}
-			}
-		}
-
+		
 		CleanClusters(slic);
 
-		for (int i = 0; i < img.rows; i++){
+		for (int i = 0; i < img.rows; i++)
 			for (int j = 0; j < img.cols; j++){
 				int index = slic->labels.at(i).at(j);
 
@@ -280,7 +303,6 @@ void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
 					slic->occurrencesCluster.at(index) += 1.0;
 				}
 			}
-		}
 
 		for (int k = 0; k < slic->clusters.size(); k++){
 			slic->clusters.at(k).at(0) /= slic->occurrencesCluster.at(k);
@@ -292,10 +314,7 @@ void generateSuperpixel(Mat src, int superpixelNr, int constantM, Slic* slic){
 	}
 
 	colorByClusters(src, slic);
-}
-
-void createConnectivity(Mat* src){
-
+	display_contours(src, slic);
 }
 
 void on_trackbar(int, void*){
@@ -303,7 +322,7 @@ void on_trackbar(int, void*){
 	Slic slic;
 	Mat src;
 	src = imread(fname, CV_LOAD_IMAGE_COLOR);
-	generateSuperpixel(src, k_slider + 1, 20.0, &slic);
+	generateSuperpixel(src, k_slider + 1, &slic);
 	std::cout << "Grid step: " << slic.step << std::endl;
 	imshow("Image", src);
 }
@@ -347,7 +366,7 @@ void on_trackbar_video(int, void*) {
 		}
 
 
-		generateSuperpixel(resize, k_slider + 1, 20.0, &slic);
+		generateSuperpixel(resize, k_slider + 1, &slic);
 
 		if (frame.empty())
 		{
@@ -395,24 +414,43 @@ int main()
 
 		switch (op)
 		{
+		case 3:
+			while (openFileDlg(fname))
+			{
+				Mat src;
+				src = imread(fname, CV_LOAD_IMAGE_COLOR);
+				Mat dest(src.rows, src.cols, CV_8UC3);
+				Mat dest1(src.rows, src.cols, CV_8UC3);
+
+				dest = BGR2HSVConversion(src);
+				cvtColor(src, dest1, CV_BGR2HSV, 3);
+
+				imshow("Image", src);
+				imshow("My", dest);
+				imshow("OpenCV", dest1);
+				waitKey(0);
+				destroyAllWindows();
+			}
+			break;
+
 			case 1:
 				printf("Number superpixel: ");
 				scanf("%d", &k_slider);
 
 				while (openFileDlg(fname))
 				{
-					//namedWindow("TrackBar", 1);
-					//resizeWindow("TrackBar", 1000, 50);
-
 					Mat src;
 					src = imread(fname, CV_LOAD_IMAGE_COLOR);
+					int dim = (src.rows > src.cols) ? src.rows : src.cols;
+					Mat img(dim, dim, CV_8UC3);
+					resize(src, img, Size(dim, dim));
 
 					double t = (double)getTickCount();
-					generateSuperpixel(src, k_slider, 20.0, &slic);
+					generateSuperpixel(img, k_slider, &slic);
 					t = ((double)getTickCount() - t) / getTickFrequency();
 					printf("Time = %.3f [ms]\n", t * 1000);
 
-					imshow("Image", src);
+					imshow("Image", img);
 					waitKey(0);
 					destroyAllWindows();
 				}
