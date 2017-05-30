@@ -401,7 +401,7 @@ void on_trackbar(int, void*){
 	imshow("Image", src);
 }
 
-void on_trackbar_video(int, void*) {
+void video(int k_slider) {
 	Slic slic;
 	Mat frame;// here we get the input from the webcam
 
@@ -438,7 +438,7 @@ void on_trackbar_video(int, void*) {
 		}
 
 
-		generateSuperpixel(resize, k_slider + 1, &slic);
+		
 
 		if (frame.empty())
 		{
@@ -448,13 +448,20 @@ void on_trackbar_video(int, void*) {
 
 		++frameNum;
 
-		imshow("Image", resize);
+		imshow("Original", frame);
 
 		c = cvWaitKey(10);  // waits a key press to advance to the next frame
+		if (c == 115) {
+			generateSuperpixel(resize, k_slider + 1, &slic);
+			colorByClusters(resize, &slic);
+			display_contours(resize, &slic);
+			imshow("Image", resize);
+		}
 		if (c == 27) {
 			// press ESC to exit
+
 			printf("ESC pressed - capture finished");
-			break;  //ESC pressed
+			break;
 		}
 	}
 
@@ -512,25 +519,9 @@ int main()
 			break;
 
 		case 2:
-
-			Mat frame;
-
-			VideoCapture cap(0);
-
-			cap >> frame; // get 1 frame from the camera;
-
-			k_slider_maxim = (frame.rows * frame.cols) / 9 - 1;
-			namedWindow("TrackBar", 1);
-			resizeWindow("TrackBar", 1000, 50);
-
-
-			char TrackbarNameVideo[50];
-
-			sprintf(TrackbarNameVideo, "K %d", k_slider_maxim);
-			createTrackbar(TrackbarNameVideo, "TrackBar", &k_slider, k_slider_maxim, on_trackbar_video);
-
-			waitKey(0);
-			destroyAllWindows();
+			printf("Number superpixel: ");
+			scanf("%d", &k_slider);
+			video(k_slider);
 
 			break;
 		}
