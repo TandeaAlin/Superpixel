@@ -56,7 +56,7 @@ Mat BGR2HSVConversion(Mat img){
 	for (int i = 0; i < img.rows; i++)
 		for (int j = 0; j < img.cols; j++)
 			dest.at<Vec3b>(i, j) = BGR2HSV(img.at<Vec3b>(i, j));
-		
+
 	return dest;
 }
 
@@ -95,7 +95,7 @@ void initialize(Mat img, int superpixelNr, Slic* slic, int constantM){
 	vector<double> center;
 	slic->step = (int)sqrt((double)(img.rows * img.cols) / (double)superpixelNr);
 	slic->constantM = constantM;
-    
+
 	for (int i = 0; i < img.rows; i++){
 		vector<int> lb;
 		vector<double> dst;
@@ -142,6 +142,17 @@ void initializeDistances(Slic* slic){
 			slic->distances.at(i).at(j) = DBL_MAX;
 }
 
+void updateClustersOccurences(Slic* slic, int maximLabel){
+	slic->occurrencesCluster.clear();
+
+	for (int i = 0; i < maximLabel; i++)
+		slic->occurrencesCluster.push_back(0.0);
+
+	for (int i = 0; i < slic->labels.size(); i++)
+		for (int j = 0; j < slic->labels.at(i).size(); j++)
+			slic->occurrencesCluster.at(slic->labels.at(i).at(j)) += 1.0;
+}
+
 void CleanClusters(Slic* slic){
 	for (int k = 0; k < slic->clusters.size(); k++){
 		slic->clusters.at(k).at(0) = 0.0;
@@ -184,9 +195,9 @@ void colorByClusters(Mat src, Slic* slic){
 	initialize.push_back(0);
 	initialize.push_back(0);
 	initialize.push_back(0);
-	for (int i = 0; i < slic->clusters.size(); i++)
+	for (int i = 0; i < slic->occurrencesCluster.size(); i++)
 		clustersColors.push_back(initialize);
-	
+
 	for (int i = 0; i < src.rows; i++)
 		for (int j = 0; j < src.cols; j++){
 			int label = slic->labels.at(i).at(j);
@@ -198,13 +209,13 @@ void colorByClusters(Mat src, Slic* slic){
 			}
 		}
 
-	for (int i = 0; i < clustersColors.size(); i++)
+	for (int i = 0; i < slic->occurrencesCluster.size(); i++)
 		if (slic->occurrencesCluster.at(i) != 0.0){
 			clustersColors.at(i).at(0) = clustersColors.at(i).at(0) / slic->occurrencesCluster.at(i);
 			clustersColors.at(i).at(1) = clustersColors.at(i).at(1) / slic->occurrencesCluster.at(i);
 			clustersColors.at(i).at(2) = clustersColors.at(i).at(2) / slic->occurrencesCluster.at(i);
 		}
-	
+
 	for (int i = 0; i < src.rows; i++)
 		for (int j = 0; j < src.cols; j++)
 			if (slic->labels.at(i).at(j) >= 0){
@@ -224,7 +235,7 @@ void display_contours(Mat src, Slic* slic) {
 	vector<vector<bool>> isselected;
 	for (int i = 0; i < src.rows; i++) {
 		vector<bool> neg;
-		for (int j = 0; j < src.cols; j++) 
+		for (int j = 0; j < src.cols; j++)
 			neg.push_back(false);
 
 		isselected.push_back(neg);
@@ -237,11 +248,11 @@ void display_contours(Mat src, Slic* slic) {
 			for (int k = 0; k < 8; k++) {
 				int x = i + dx[k], y = j + dy[k];
 
-				if (x >= 0 && x < src.rows && y >= 0 && y < src.cols) 
+				if (x >= 0 && x < src.rows && y >= 0 && y < src.cols)
 					if (isselected.at(x).at(y) == false && slic->labels.at(i).at(j) != slic->labels.at(x).at(y)) {
 						pixelNumber += 1;
 					}
- 			}
+			}
 
 			if (pixelNumber > 1) {
 				contourPoints.push_back(Point(i, j));
@@ -255,7 +266,73 @@ void display_contours(Mat src, Slic* slic) {
 	}
 
 	imshow("Contour", dest);
-	//displayClusters(dest, slic);
+}
+
+void create_connectivity(int rows, int cols, Slic* slic) {
+	int label = 0, adjLabel = 0;
+	const int lims = (cols * rows) / (int)((slic->clusters).size());
+
+	const int dx[4] = { -1, 0, 1, 0 };
+	const int dy[4] = { 0, -1, 0, 1 };
+
+	// Initialize new cluster matrix
+	vector<vector<int>> new_clusters;
+	for (int i = 0; i < cols; i++) {
+		vector<int> nc;
+		for (int j = 0; j < rows; j++) {
+			nc.push_back(-1);
+		}
+		new_clusters.push_back(nc);
+	}
+
+	for (int i = 0; i < cols; i++) {
+		for (int j = 0; j < rows; j++) {
+
+			if (new_clusters[i][j] == -1) {
+				vector<Point> elements;
+				elements.push_back(Point(i, j));
+
+				//Find possible adjacent label
+				for (int k = 0; k < 4; k++) {
+					int x = elements[elements.size() - 1].x + dx[k];
+					int y = elements[elements.size() - 1].y + dy[k];
+
+					if (x >= 0 && x < cols && y >= 0 && y < rows) {
+						if (new_clusters[x][y] >= 0) {
+							adjLabel = new_clusters[x][y];
+						}
+					}
+				}
+
+				int count = 1;
+				for (int c = 0; c < count; c++)
+					for (int k = 0; k < 4; k++) {
+						int x = elements[c].x + dx[k];
+						int y = elements[c].y + dy[k];
+
+						if (x >= 0 && x < cols && y >= 0 && y < rows)
+							if (new_clusters[x][y] == -1 && slic->labels[i][j] == slic->labels[x][y]) {
+								elements.push_back(Point(x, y));
+								new_clusters[x][y] = label;
+								count += 1;
+							}
+					}
+
+				/* Using the earlier found adjacent label if a segment size is
+				smaller than a limit. */
+				if (count <= lims >> 2) {
+					for (int c = 0; c < count; c++){
+						new_clusters[elements[c].x][elements[c].y] = adjLabel;
+					}
+					label -= 1;
+				}
+				label += 1;
+			}
+		}
+	}
+
+	slic->labels = new_clusters;
+	updateClustersOccurences(slic, label);
 }
 
 void generateSuperpixel(Mat src, int superpixelNr, Slic* slic){
@@ -264,9 +341,9 @@ void generateSuperpixel(Mat src, int superpixelNr, Slic* slic){
 
 	clear(slic);
 	img = BGR2HSVConversion(src);
-	initialize(img, superpixelNr, slic, 20.0);
+	initialize(img, superpixelNr, slic, 10.0);
 
-	for (int iteration = 0; iteration < 20; iteration++){
+	for (int iteration = 0; iteration < 10; iteration++){
 
 		initializeDistances(slic);
 
@@ -286,7 +363,7 @@ void generateSuperpixel(Mat src, int superpixelNr, Slic* slic){
 						}
 					}
 				}
-		
+
 		CleanClusters(slic);
 
 		for (int i = 0; i < img.rows; i++)
@@ -312,72 +389,6 @@ void generateSuperpixel(Mat src, int superpixelNr, Slic* slic){
 			slic->clusters.at(k).at(4) /= slic->occurrencesCluster.at(k);
 		}
 	}
-}
-void create_connectivity(Mat img, Slic* slic) {
-	int label = 0, adjLabel = 0;
-	const int lims = (img.cols * img.rows) / (int)((slic->clusters).size());
-
-	const int dx[4] = { -1,0,1,0 };
-	const int dy[4] = { 0,-1,0,1 };
-
-	// Initialize new cluster matrix
-	vector<vector<int>> new_clusters;
-	for (int i = 0; i < img.cols; i++) {
-		vector<int> nc;
-		for (int j = 0; j < img.rows; j++) {
-			nc.push_back(-1	);
-		}
-		new_clusters.push_back(nc);
-	}
-
-	for (int i = 0; i < img.cols; i++) {
-		for (int j = 0; j < img.rows; j++) {
-			
-			if (new_clusters[i][j] == -1) {			// egalitate cu DOUBLE ??
-				vector<Point> elements;
-				elements.push_back(Point(i,j));
-
-				//Find possible adjacent label
-				for (int k = 0; k < 4; k++) {
-					int x = elements[0].x + dx[k];
-					int y = elements[0].y + dy[k]; 
-
-					if (x >= 0 && x < img.cols && y >= 0 && y < img.rows) {
-						if (new_clusters[x][y] >= 0) {		// >=0  
-							adjLabel = new_clusters[x][y];
-						}
-					}
-				}
-
-				int count = 1;
-				for (int c = 0; c < count; c++) {
-					for (int k = 0; k < 4; k++) {
-						int x = elements[c].x + dx[k];
-						int y = elements[c].y + dy[k];
-
-						if (x >= 0 && x < img.cols && y >= 0 && y < img.rows) {
-							if (new_clusters[x][y] == -1 && slic->labels[i][j] == slic->labels[x][y]) {
-								elements.push_back(Point(x, y));
-								new_clusters[x][y] = label;
-								count += 1;
-							}
-						}
-					}
-				}
-
-				/* Using the earlier found adjacent label if a segment size is
-				smaller than a limit. */
-				if (count <= lims >> 2) {
-					for (int c = 0; c < count; c++) {
-						new_clusters[elements[c].x][elements[c].y] = adjLabel;
-					}
-					label -= 1;
-				}
-				label += 1;
-			}
-		}
-	}
-
 }
 
 void on_trackbar(int, void*){
@@ -410,11 +421,9 @@ void on_trackbar_video(int, void*) {
 	int frameNum = -1;
 	int frameCount = 0;
 
-	
+	Mat resize(capS.height, capS.height, CV_8UC3);
 
-	Mat resize(capS.height , capS.height , CV_8UC3);
-
-	std::cout << "width : " << capS.width << "height : " << capS.height<< std::endl;
+	std::cout << "width : " << capS.width << "height : " << capS.height << std::endl;
 
 	int resizeFactor = capS.width - capS.height;
 
@@ -422,8 +431,8 @@ void on_trackbar_video(int, void*) {
 	{
 		cap >> frame; // get a new frame from camera
 
-		for (int i = 0; i < capS.height ; i++) {
-			for (int j = 0 ; j < capS.width ; j++) {
+		for (int i = 0; i < capS.height; i++) {
+			for (int j = 0; j < capS.width; j++) {
 				resize.at<Vec3b>(i, j) = frame.at<Vec3b>(i, j + resizeFactor);
 			}
 		}
@@ -465,117 +474,68 @@ int main()
 		system("cls");
 		destroyAllWindows();
 
-		//Vec3b pixel = BGR2LAB(Vec3b(0, 0, 255));
-
 		printf("Menu:\n");
 		printf(" 1 - Cluster center\n");
 		printf(" 2 - Cluster center on video\n");
-		printf(" 3 - RGB2LAB\n");
-		printf(" 4 - Superpixel with connectivity\n");
 		printf(" 0 - Exit\n\n");
 		printf("Option: ");
-		scanf("%d",&op);
+		scanf("%d", &op);
 
 		switch (op)
 		{
-		case 3:
+		case 1:
+			printf("Number superpixel: ");
+			scanf("%d", &k_slider);
+
 			while (openFileDlg(fname))
 			{
 				Mat src;
 				src = imread(fname, CV_LOAD_IMAGE_COLOR);
-				Mat dest(src.rows, src.cols, CV_8UC3);
-				Mat dest1(src.rows, src.cols, CV_8UC3);
+				int dim = (src.rows > src.cols) ? src.rows : src.cols;
+				Mat img(dim, dim, CV_8UC3);
+				resize(src, img, Size(dim, dim));
 
-				dest = BGR2HSVConversion(src);
-				cvtColor(src, dest1, CV_BGR2HSV, 3);
+				double t = (double)getTickCount();
 
-				imshow("Image", src);
-				imshow("My", dest);
-				imshow("OpenCV", dest1);
+				generateSuperpixel(img, k_slider, &slic);
+				imshow("Image", img);
+				create_connectivity(img.rows, img.cols, &slic);
+				colorByClusters(img, &slic);
+				display_contours(img, &slic);
+
+				t = ((double)getTickCount() - t) / getTickFrequency();
+				printf("Time = %.3f [ms]\n", t * 1000);
+
 				waitKey(0);
 				destroyAllWindows();
 			}
 			break;
 
-			case 1:
-				printf("Number superpixel: ");
-				scanf("%d", &k_slider);
+		case 2:
 
-				while (openFileDlg(fname))
-				{
-					Mat src;
-					src = imread(fname, CV_LOAD_IMAGE_COLOR);
-					int dim = (src.rows > src.cols) ? src.rows : src.cols;
-					Mat img(dim, dim, CV_8UC3);
-					resize(src, img, Size(dim, dim));
+			Mat frame;
 
-					double t = (double)getTickCount();
+			VideoCapture cap(0);
 
-					generateSuperpixel(img, k_slider, &slic);
-					colorByClusters(img, &slic);
-					display_contours(img, &slic);
+			cap >> frame; // get 1 frame from the camera;
 
-					t = ((double)getTickCount() - t) / getTickFrequency();
-					printf("Time = %.3f [ms]\n", t * 1000);
-
-					imshow("Image", img);
-					waitKey(0);
-					destroyAllWindows();
-				}
-				break;
-
-			case 4:
-				printf("Number superpixel: ");
-				scanf("%d", &k_slider);
-
-				while (openFileDlg(fname))
-				{
-					Mat src;
-					src = imread(fname, CV_LOAD_IMAGE_COLOR);
-					int dim = (src.rows > src.cols) ? src.rows : src.cols;
-					Mat img(dim, dim, CV_8UC3);
-					resize(src, img, Size(dim, dim));
-
-					double t = (double)getTickCount();
-
-					generateSuperpixel(img, k_slider, &slic);
-					create_connectivity(img, &slic);
-					colorByClusters(img, &slic);
-					display_contours(img, &slic);
-
-					t = ((double)getTickCount() - t) / getTickFrequency();
-					printf("Time = %.3f [ms]\n", t * 1000);
-
-					imshow("Image", img);
-					waitKey(0);
-					destroyAllWindows();
-				}
-				break;
-
-			case 2:
-
-				Mat frame;
-
-				VideoCapture cap(0);
-
-				cap >> frame; // get 1 frame from the camera;
-
-				k_slider_maxim = (frame.rows * frame.cols) / 9 - 1;
-				namedWindow("TrackBar", 1);
-				resizeWindow("TrackBar", 1000, 50);
+			k_slider_maxim = (frame.rows * frame.cols) / 9 - 1;
+			namedWindow("TrackBar", 1);
+			resizeWindow("TrackBar", 1000, 50);
 
 
-				char TrackbarNameVideo[50];
+			char TrackbarNameVideo[50];
 
-				sprintf(TrackbarNameVideo, "K %d", k_slider_maxim);
-				createTrackbar(TrackbarNameVideo, "TrackBar", &k_slider, k_slider_maxim, on_trackbar_video);
-	
-				waitKey(0);
-				destroyAllWindows();
+			sprintf(TrackbarNameVideo, "K %d", k_slider_maxim);
+			createTrackbar(TrackbarNameVideo, "TrackBar", &k_slider, k_slider_maxim, on_trackbar_video);
 
-				break;
+			waitKey(0);
+			destroyAllWindows();
+
+			break;
 		}
-	}
-	while (op!=0);
+	} while (op != 0);
+
+	clear(&slic);
 	return 0;
 }
